@@ -10,10 +10,9 @@ A tool to benchmark SignalR.
 
 ```bash
 mkdir -p sigbench/src
-git clone https://github.com/ArchangelSDY/Sigbench sigbench/src/microsoft.com
-cd sigbench
-export GOPATH=`pwd`
-go build -v -o sigbench microsoft.com
+git clone https://github.com/ArchangelSDY/Sigbench sigbench/src/microsoft.com/sigbench
+cd sigbench/src/microsoft.com/sigbench
+make build
 ```
 
 > If you are buidling on Windows, you can do a cross compilation by setting environment variables `GOOS=linux` and `GOARCH=amd64`.
