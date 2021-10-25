@@ -17,7 +17,7 @@ func (s *HttpGetSession) Name() string {
 	return "HttpGet"
 }
 
-func (s *HttpGetSession) Setup() error {
+func (s *HttpGetSession) Setup(map[string]string) error {
 	s.counterInitiated = 0
 	s.counterCompleted = 0
 	s.counterError = 0
@@ -27,7 +27,8 @@ func (s *HttpGetSession) Setup() error {
 func (s *HttpGetSession) Execute(ctx *UserContext) error {
 	atomic.AddInt64(&s.counterInitiated, 1)
 
-	resp, err := http.Get("https://www.baidu.com")
+	urlStr := ctx.Params["url"]
+	resp, err := http.Get(urlStr)
 	if err != nil {
 		log.Println("Error: ", err)
 		atomic.AddInt64(&s.counterInitiated, -1)

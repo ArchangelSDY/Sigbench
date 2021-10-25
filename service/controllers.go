@@ -3,12 +3,14 @@ package service
 import (
 	"encoding/json"
 	"html/template"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/gorilla/websocket"
 
 	"microsoft.com/sigbench/base"
 	"microsoft.com/sigbench/master"
@@ -22,12 +24,15 @@ func NewServiceMux(outDir string) http.Handler {
 	}
 
 	sigMux := &SigbenchMux{
-		outDir: outDir,
-		lock:   &sync.RWMutex{},
+		outDir:         outDir,
+		snapshotWriter: snapshot.NewMemorySnapshotWriter(),
+		wsUpgrader:     &websocket.Upgrader{},
+		lock:           &sync.RWMutex{},
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/job/create", sigMux.HandleJobCreate)
+	mux.HandleFunc("/job/status", sigMux.HandleJobStatus)
 	mux.HandleFunc("/", sigMux.HandleIndex)
 
 	sigMux.mux = mux
@@ -39,6 +44,8 @@ type SigbenchMux struct {
 	outDir           string
 	mux              *http.ServeMux
 	masterController *master.MasterController
+	snapshotWriter   snapshot.SnapshotWriter
+	wsUpgrader       *websocket.Upgrader
 	lock             *sync.RWMutex
 }
 
@@ -59,18 +66,25 @@ const TplIndex = `
 <html>
 <body>
 	<h1>Sigbench</h1>
-	<form id="job-form" onsubmit="return jobCreate();">
-		<p>Agents</p>
-		<textarea name="agents" cols="50" rows="5">localhost:7000,localhost:7001</textarea>
+	<div style="display: flex">
+		<form id="job-form" onsubmit="return jobCreate();" style="max-width: 500px">
+			<p>Agents</p>
+			<textarea name="agents" cols="50" rows="5">localhost:7000,localhost:7001</textarea>
 
-		<p>Config</p>
-		<textarea name="config" cols="50" rows="25"></textarea>
+			<p>Config</p>
+			<textarea name="config" cols="50" rows="25"></textarea>
 
-		<p>
-			<input type="submit" value="Submit">
-		</p>
-	</form>
+			<p>
+				<input type="submit" value="Submit">
+			</p>
+		</form>
+		<div style="width: 100%; margin-left: 1em">
+			<p>Status</p>
+			<textarea id="status" rows="25" style="width: 100%"></textarea>
+		</div>
+	</div>
 	<script>
+
 		function jobCreate() {
 			var form = document.getElementById("job-form");
 			var agents = form.agents.value;
@@ -83,6 +97,28 @@ const TplIndex = `
 				if (!resp.ok) {
 					resp.text().then(alert);
 				}
+
+				var loc = window.location;
+				var statusEl = document.getElementById("status");
+				statusEl.value = '';
+				window.ws = new WebSocket('ws://' + loc.host + "/job/status");
+				window.ws.onmessage = function(ev) {
+					var data = JSON.parse(ev.data);
+					var counters = data.Counters;
+					var updatedAt = data.UpdatedAt;
+
+					var s = updatedAt + ' Counters:\n';
+					for (const k in counters) {
+						s += (k + ': ' + counters[k] + '\n');
+					}
+					s += '----------\n';
+
+					statusEl.value += s;
+					statusEl.scrollTop = statusEl.scrollHeight;
+				};
+				window.ws.onclose = function() {
+					statusEl.value += 'Finished';
+				};
 			});
 
 			return false;
@@ -126,8 +162,10 @@ func (c *SigbenchMux) HandleJobCreate(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
+	c.snapshotWriter = snapshot.NewMemorySnapshotWriter()
 	c.masterController = &master.MasterController{
-		SnapshotWriter: snapshot.NewJsonSnapshotWriter(c.outDir + "/counters.txt"),
+		// SnapshotWriter: snapshot.NewJsonSnapshotWriter(c.outDir + "/counters.txt"),
+		SnapshotWriter: c.snapshotWriter,
 	}
 
 	c.lock.Unlock()
@@ -145,11 +183,11 @@ func (c *SigbenchMux) HandleJobCreate(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	// Make a copy of config to output directory
-	if err := ioutil.WriteFile(c.outDir+"/config.json", []byte(config), 0644); err != nil {
-		http.Error(w, "Fail to save copy of config: "+err.Error(), http.StatusBadRequest)
-		return
-	}
+	// // Make a copy of config to output directory
+	// if err := ioutil.WriteFile(c.outDir+"/config.json", []byte(config), 0644); err != nil {
+	// 	http.Error(w, "Fail to save copy of config: "+err.Error(), http.StatusBadRequest)
+	// 	return
+	// }
 
 	go func() {
 		c.masterController.Run(&job)
@@ -160,4 +198,37 @@ func (c *SigbenchMux) HandleJobCreate(w http.ResponseWriter, req *http.Request) 
 	}()
 
 	w.WriteHeader(http.StatusCreated)
+}
+
+func (c *SigbenchMux) HandleJobStatus(w http.ResponseWriter, req *http.Request) {
+	wc, err := c.wsUpgrader.Upgrade(w, req, nil)
+	if err != nil {
+		http.Error(w, "Fail to upgrade websocket: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer wc.Close()
+	tick := time.Tick(time.Second)
+	for _ = range tick {
+		lastFlush := false
+
+		var sw *snapshot.MemorySnapshotWriter
+		c.lock.RLock()
+		lastFlush = c.masterController == nil
+		sw = c.snapshotWriter.(*snapshot.MemorySnapshotWriter)
+		c.lock.RUnlock()
+
+		payload, err := sw.Dump()
+		if err != nil {
+			break
+		}
+
+		err = wc.WriteMessage(websocket.TextMessage, payload)
+		if err != nil {
+			break
+		}
+
+		if lastFlush {
+			break
+		}
+	}
 }
