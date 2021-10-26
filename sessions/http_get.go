@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"net/http"
+	"net/url"
 )
 
 type HttpGetSession struct {
@@ -42,12 +43,21 @@ func (s *HttpGetSession) Name() string {
 	return "HttpGet"
 }
 
-func (s *HttpGetSession) Setup(map[string]string) error {
+func (s *HttpGetSession) Setup(params map[string]string) error {
 	s.counterInitiated = 0
 	s.counterCompleted = 0
 	s.counterError = 0
 	s.counterDurationLt1000 = 0
 	s.counterDurationGte1000 = 0
+
+	proxyUrl := params["proxy"]
+	if proxyUrl != "" {
+		if u, err := url.Parse(proxyUrl); err == nil {
+			log.Println("Use proxy", u)
+			s.client.Transport.(*http.Transport).Proxy = http.ProxyURL(u)
+		}
+	}
+
 	return nil
 }
 
