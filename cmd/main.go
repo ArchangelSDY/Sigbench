@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/rpc"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -118,8 +119,33 @@ func startAsMaster(agents []string, config string, outDir string) {
 	// }
 }
 
-func startAsAgent(address string) {
+func autoRegisterAgent(agentAddr, masterAddr string) {
+	t := time.Tick(5 * time.Second)
+	for _ = range t {
+		body := url.Values{
+			"agentAddress": {agentAddr},
+		}
+		resp, err := http.PostForm(masterAddr+"/agent/register", body)
+		if err != nil {
+			log.Println("Fail to register", err)
+			continue
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			log.Println("Fail to register: bad status", resp.StatusCode)
+			continue
+		}
+		log.Printf("Register %s to master %s", agentAddr, masterAddr)
+	}
+}
+
+func startAsAgent(address, masterAddr string) {
 	controller := &agent.AgentController{}
+
+	if masterAddr != "" {
+		go autoRegisterAgent(address, masterAddr)
+	}
+
 	rpc.Register(controller)
 	rpc.HandleHTTP()
 	l, err := net.Listen("tcp", address)
@@ -131,6 +157,12 @@ func startAsAgent(address string) {
 
 func startAsService(address string, outDir string) {
 	mux := service.NewServiceMux(outDir)
+	go func() {
+		t := time.Tick(time.Minute)
+		for _ = range t {
+			mux.CheckExpiredAgents()
+		}
+	}()
 	log.Fatal(http.ListenAndServe(address, mux))
 }
 
@@ -140,6 +172,7 @@ func main() {
 	var outDir = flag.String("outDir", "output/"+strconv.FormatInt(time.Now().Unix(), 10), "Output directory")
 	var listenAddress = flag.String("l", ":7000", "Listen address")
 	var agents = flag.String("agents", "", "Agent addresses separated by comma")
+	var masterAddr = flag.String("master", "", "Master address for auto registration")
 
 	flag.Parse()
 
@@ -155,6 +188,6 @@ func main() {
 		startAsService(*listenAddress, *outDir)
 	} else {
 		log.Println("Start as agent: ", *listenAddress)
-		startAsAgent(*listenAddress)
+		startAsAgent(*listenAddress, *masterAddr)
 	}
 }

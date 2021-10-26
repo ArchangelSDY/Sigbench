@@ -17,7 +17,7 @@ import (
 	"microsoft.com/sigbench/snapshot"
 )
 
-func NewServiceMux(outDir string) http.Handler {
+func NewServiceMux(outDir string) *SigbenchMux {
 	// Create output directory
 	if err := os.MkdirAll(outDir, 0755); err != nil {
 		log.Fatalln(err)
@@ -27,12 +27,14 @@ func NewServiceMux(outDir string) http.Handler {
 		outDir:         outDir,
 		snapshotWriter: snapshot.NewMemorySnapshotWriter(),
 		wsUpgrader:     &websocket.Upgrader{},
+		regAgentAddrs:  make(map[string]time.Time),
 		lock:           &sync.RWMutex{},
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/job/create", sigMux.HandleJobCreate)
 	mux.HandleFunc("/job/status", sigMux.HandleJobStatus)
+	mux.HandleFunc("/agent/register", sigMux.HandleAgentRegister)
 	mux.HandleFunc("/", sigMux.HandleIndex)
 
 	sigMux.mux = mux
@@ -46,6 +48,7 @@ type SigbenchMux struct {
 	masterController *master.MasterController
 	snapshotWriter   snapshot.SnapshotWriter
 	wsUpgrader       *websocket.Upgrader
+	regAgentAddrs    map[string]time.Time
 	lock             *sync.RWMutex
 }
 
@@ -69,7 +72,7 @@ const TplIndex = `
 	<div style="display: flex">
 		<form id="job-form" onsubmit="return jobCreate();" style="max-width: 500px">
 			<p>Agents</p>
-			<textarea name="agents" cols="50" rows="5">localhost:7000,localhost:7001</textarea>
+			<textarea name="agents" cols="50" rows="5">{{.agents}}</textarea>
 
 			<p>Config</p>
 			<textarea name="config" cols="50" rows="25"></textarea>
@@ -129,7 +132,17 @@ const TplIndex = `
 `
 
 func (c *SigbenchMux) HandleIndex(w http.ResponseWriter, req *http.Request) {
-	c.renderTemplate(w, TplIndex, nil)
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+
+	agents := []string{}
+	for addr := range c.regAgentAddrs {
+		agents = append(agents, addr)
+	}
+
+	c.renderTemplate(w, TplIndex, map[string]interface{}{
+		"agents": strings.Join(agents, ","),
+	})
 }
 
 func (c *SigbenchMux) HandleJobCreate(w http.ResponseWriter, req *http.Request) {
@@ -231,4 +244,32 @@ func (c *SigbenchMux) HandleJobStatus(w http.ResponseWriter, req *http.Request) 
 			break
 		}
 	}
+}
+
+func (c *SigbenchMux) HandleAgentRegister(w http.ResponseWriter, req *http.Request) {
+	if err := req.ParseForm(); err != nil {
+		http.Error(w, "Fail to parse form: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	agentAddr := req.Form.Get("agentAddress")
+	if agentAddr != "" {
+		c.lock.Lock()
+		log.Println("Register agent:", agentAddr)
+		c.regAgentAddrs[agentAddr] = time.Now()
+		c.lock.Unlock()
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (c *SigbenchMux) CheckExpiredAgents() {
+	c.lock.Lock()
+	now := time.Now()
+	for addr, ts := range c.regAgentAddrs {
+		if now.Sub(ts) > 5*time.Minute {
+			delete(c.regAgentAddrs, addr)
+		}
+	}
+	c.lock.Unlock()
 }
