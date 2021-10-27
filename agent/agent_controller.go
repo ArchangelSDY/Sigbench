@@ -84,8 +84,10 @@ func (c *AgentController) runPhase(job *base.Job, phase *base.JobPhase, agentCou
 		sessUserChan := make(chan struct{}, sessionUsers)
 		go func(session sessions.Session, swg *sync.WaitGroup) {
 			var wg sync.WaitGroup
-			defer wg.Wait()
-			defer swg.Done()
+			defer func() {
+				wg.Wait()
+				swg.Done()
+			}()
 			for {
 				select {
 				case sessUserChan <- struct{}{}:
