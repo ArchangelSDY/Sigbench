@@ -1,6 +1,7 @@
 package sessions
 
 import (
+	"context"
 	"log"
 	"net"
 	"sync/atomic"
@@ -32,12 +33,22 @@ func (s *HttpGetSession) Setup(params map[string]string) error {
 	s.counterDurationLt10000 = 0
 	s.counterDurationGte10000 = 0
 
+	dialer := &net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
 	s.client = &http.Client{
 		Transport: &http.Transport{
-			DialContext: (&net.Dialer{
-				Timeout:   30 * time.Second,
-				KeepAlive: 30 * time.Second,
-			}).DialContext,
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				conn, err := dialer.DialContext(ctx, network, addr)
+				if err != nil {
+					return nil, err
+				}
+				if err = conn.(*net.TCPConn).SetLinger(0); err != nil {
+					log.Println("Fail to set linger", err)
+				}
+				return conn, nil
+			},
 			ForceAttemptHTTP2:     true,
 			MaxIdleConns:          100,
 			IdleConnTimeout:       90 * time.Second,
