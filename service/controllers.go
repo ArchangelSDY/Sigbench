@@ -153,13 +153,18 @@ func (c *SigbenchMux) HandleJobCreate(w http.ResponseWriter, req *http.Request) 
 	}
 
 	agents := strings.Split(req.Form.Get("agents"), ",")
-	config := req.Form.Get("config")
-
 	if len(agents) == 0 {
 		http.Error(w, "No agents specified", http.StatusBadRequest)
 		return
 	}
 	log.Println("Agents: ", agents)
+
+	var job base.Job
+	config := req.Form.Get("config")
+	if err := json.Unmarshal([]byte(config), &job); err != nil {
+		http.Error(w, "Fail to decode config: "+err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	c.lock.RLock()
 	if c.masterController != nil {
@@ -189,12 +194,6 @@ func (c *SigbenchMux) HandleJobCreate(w http.ResponseWriter, req *http.Request) 
 			http.Error(w, "Fail to register agent: "+err.Error(), http.StatusBadRequest)
 			return
 		}
-	}
-
-	var job base.Job
-	if err := json.Unmarshal([]byte(config), &job); err != nil {
-		http.Error(w, "Fail to decode config: "+err.Error(), http.StatusBadRequest)
-		return
 	}
 
 	// // Make a copy of config to output directory
