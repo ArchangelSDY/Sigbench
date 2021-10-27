@@ -46,7 +46,29 @@ func (c *AgentController) getSessionUsers(phase *base.JobPhase, percentage float
 	}
 }
 
-func (c *AgentController) runPhase(job *base.Job, phase *base.JobPhase, agentCount, agentIdx int, wg *sync.WaitGroup) {
+func executeSession(job *base.Job, phase *base.JobPhase, session sessions.Session, done chan struct{}, wg *sync.WaitGroup) {
+	uid, err := shortid.Generate()
+	if err != nil {
+		log.Println("Error: fail to generate uid due to", err)
+		return
+	}
+
+	ctx := &sessions.UserContext{
+		UserId: uid,
+		Phase:  phase.Name,
+		Params: job.SessionParams,
+	}
+
+	// TODO: Check error
+	session.Execute(ctx)
+
+	<-done
+	wg.Done()
+}
+
+func (c *AgentController) runPhase(job *base.Job, phase *base.JobPhase, agentCount, agentIdx int) {
+	var swg sync.WaitGroup
+	swg.Add(len(job.SessionNames))
 	for idx, sessionName := range job.SessionNames {
 		sessionUsers := c.getSessionUsers(phase, job.SessionPercentages[idx], agentCount, agentIdx)
 		log.Println(fmt.Sprintf("Session %s users: %d", sessionName, sessionUsers))
@@ -58,61 +80,33 @@ func (c *AgentController) runPhase(job *base.Job, phase *base.JobPhase, agentCou
 			log.Fatalln("Session not found: " + sessionName)
 		}
 
-		for i := int64(0); i < sessionUsers; i++ {
-			wg.Add(1)
-			go func(session sessions.Session) {
-				// Done for user
-				defer wg.Done()
-
-				uid, err := shortid.Generate()
-				if err != nil {
-					log.Println("Error: fail to generate uid due to", err)
+		after := time.After(phase.Duration)
+		sessUserChan := make(chan struct{}, sessionUsers)
+		go func(session sessions.Session, swg *sync.WaitGroup) {
+			var wg sync.WaitGroup
+			defer wg.Wait()
+			defer swg.Done()
+			for {
+				select {
+				case sessUserChan <- struct{}{}:
+					wg.Add(1)
+					go executeSession(job, phase, session, sessUserChan, &wg)
+				case <-after:
 					return
 				}
-
-				ctx := &sessions.UserContext{
-					UserId: uid,
-					Phase:  phase.Name,
-					Params: job.SessionParams,
-				}
-
-				// TODO: Check error
-				session.Execute(ctx)
-
-			}(session)
-		}
+			}
+		}(session, &swg)
 	}
-
-	// Done for phase
-	wg.Done()
+	swg.Wait()
 }
 
 func (c *AgentController) Run(args *AgentRunArgs, result *AgentRunResult) error {
 	log.Println("Start run: ", args)
-	var wg sync.WaitGroup
 
 	for _, phase := range args.Job.Phases {
 		log.Println("Phase: ", phase)
-		start := time.Now()
-
-		ticker := time.NewTicker(time.Second)
-		for now := range ticker.C {
-			if phase.Duration-now.Sub(start) <= 0 {
-				ticker.Stop()
-				break
-			}
-
-			wg.Add(1)
-			go c.runPhase(&args.Job, &phase, args.AgentCount, args.AgentIdx, &wg)
-
-			if phase.Duration-now.Sub(start) <= 0 {
-				ticker.Stop()
-				break
-			}
-		}
+		c.runPhase(&args.Job, &phase, args.AgentCount, args.AgentIdx)
 	}
-
-	wg.Wait()
 
 	log.Println("Finished run: ", args)
 
