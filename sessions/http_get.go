@@ -19,26 +19,6 @@ type HttpGetSession struct {
 	counterDurationGte1000 int64
 }
 
-func NewHttpGetSession() *HttpGetSession {
-	return &HttpGetSession{
-		client: &http.Client{
-			Transport: &http.Transport{
-				DialContext: (&net.Dialer{
-					Timeout:   30 * time.Second,
-					KeepAlive: 30 * time.Second,
-				}).DialContext,
-				ForceAttemptHTTP2:     true,
-				MaxIdleConns:          100,
-				IdleConnTimeout:       90 * time.Second,
-				TLSHandshakeTimeout:   10 * time.Second,
-				ExpectContinueTimeout: 1 * time.Second,
-				DisableKeepAlives:     true,
-			},
-			Timeout: time.Minute,
-		},
-	}
-}
-
 func (s *HttpGetSession) Name() string {
 	return "HttpGet"
 }
@@ -50,6 +30,21 @@ func (s *HttpGetSession) Setup(params map[string]string) error {
 	s.counterDurationLt1000 = 0
 	s.counterDurationGte1000 = 0
 
+	s.client = &http.Client{
+		Transport: &http.Transport{
+			DialContext: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+			ForceAttemptHTTP2:     true,
+			MaxIdleConns:          100,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+			DisableKeepAlives:     true,
+		},
+		Timeout: time.Minute,
+	}
 	proxyUrl := params["proxy"]
 	if proxyUrl != "" {
 		if u, err := url.Parse(proxyUrl); err == nil {
