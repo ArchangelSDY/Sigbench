@@ -267,7 +267,7 @@ func (c *SigbenchMux) CheckExpiredAgents() {
 	c.lock.Lock()
 	now := time.Now()
 	for addr, ts := range c.regAgentAddrs {
-		if now.Sub(ts) > 5*time.Minute {
+		if now.Sub(ts) > 15*time.Second {
 			delete(c.regAgentAddrs, addr)
 		}
 	}

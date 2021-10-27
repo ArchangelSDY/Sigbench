@@ -158,7 +158,7 @@ func startAsAgent(address, masterAddr string) {
 func startAsService(address string, outDir string) {
 	mux := service.NewServiceMux(outDir)
 	go func() {
-		t := time.Tick(time.Minute)
+		t := time.Tick(5 * time.Second)
 		for _ = range t {
 			mux.CheckExpiredAgents()
 		}
