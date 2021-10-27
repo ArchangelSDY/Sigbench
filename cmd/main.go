@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	_ "go.uber.org/automaxprocs"
+
 	"microsoft.com/sigbench/agent"
 	"microsoft.com/sigbench/base"
 	"microsoft.com/sigbench/master"
