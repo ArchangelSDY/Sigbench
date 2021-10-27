@@ -71,7 +71,7 @@ const TplIndex = `
 	<h1>Sigbench</h1>
 	<div style="display: flex">
 		<form id="job-form" onsubmit="return jobCreate();" style="max-width: 500px">
-			<p>Agents</p>
+			<p>Agents ({{.agentsCount}})</p>
 			<textarea name="agents" cols="50" rows="5">{{.agents}}</textarea>
 
 			<p>Config</p>
@@ -141,7 +141,8 @@ func (c *SigbenchMux) HandleIndex(w http.ResponseWriter, req *http.Request) {
 	}
 
 	c.renderTemplate(w, TplIndex, map[string]interface{}{
-		"agents": strings.Join(agents, ","),
+		"agentsCount": len(agents),
+		"agents":      strings.Join(agents, ","),
 	})
 }
 
