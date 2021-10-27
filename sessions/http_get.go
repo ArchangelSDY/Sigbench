@@ -11,12 +11,13 @@ import (
 )
 
 type HttpGetSession struct {
-	client                 *http.Client
-	counterInitiated       int64
-	counterCompleted       int64
-	counterError           int64
-	counterDurationLt1000  int64
-	counterDurationGte1000 int64
+	client                  *http.Client
+	counterInitiated        int64
+	counterCompleted        int64
+	counterError            int64
+	counterDurationLt1000   int64
+	counterDurationLt10000  int64
+	counterDurationGte10000 int64
 }
 
 func (s *HttpGetSession) Name() string {
@@ -28,7 +29,8 @@ func (s *HttpGetSession) Setup(params map[string]string) error {
 	s.counterCompleted = 0
 	s.counterError = 0
 	s.counterDurationLt1000 = 0
-	s.counterDurationGte1000 = 0
+	s.counterDurationLt10000 = 0
+	s.counterDurationGte10000 = 0
 
 	s.client = &http.Client{
 		Transport: &http.Transport{
@@ -72,10 +74,12 @@ func (s *HttpGetSession) Execute(ctx *UserContext) error {
 	defer resp.Body.Close()
 
 	duration := time.Now().Sub(start)
-	if duration >= time.Second {
-		atomic.AddInt64(&s.counterDurationGte1000, 1)
-	} else {
+	if duration < time.Second {
 		atomic.AddInt64(&s.counterDurationLt1000, 1)
+	} else if duration < 10*time.Second {
+		atomic.AddInt64(&s.counterDurationLt10000, 1)
+	} else {
+		atomic.AddInt64(&s.counterDurationGte10000, 1)
 	}
 
 	atomic.AddInt64(&s.counterInitiated, -1)
@@ -86,10 +90,11 @@ func (s *HttpGetSession) Execute(ctx *UserContext) error {
 
 func (s *HttpGetSession) Counters() map[string]int64 {
 	return map[string]int64{
-		"initiated":       atomic.LoadInt64(&s.counterInitiated),
-		"completed":       atomic.LoadInt64(&s.counterCompleted),
-		"error":           atomic.LoadInt64(&s.counterError),
-		"duration:<1000":  atomic.LoadInt64(&s.counterDurationLt1000),
-		"duration:>=1000": atomic.LoadInt64(&s.counterDurationGte1000),
+		"initiated":        atomic.LoadInt64(&s.counterInitiated),
+		"completed":        atomic.LoadInt64(&s.counterCompleted),
+		"error":            atomic.LoadInt64(&s.counterError),
+		"duration:<1000":   atomic.LoadInt64(&s.counterDurationLt1000),
+		"duration:<10000":  atomic.LoadInt64(&s.counterDurationLt10000),
+		"duration:>=10000": atomic.LoadInt64(&s.counterDurationGte10000),
 	}
 }
