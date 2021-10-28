@@ -2,8 +2,11 @@ package sessions
 
 import (
 	"context"
+	"io"
+	"io/ioutil"
 	"log"
 	"net"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -33,6 +36,33 @@ func (s *HttpGetSession) Setup(params map[string]string) error {
 	s.counterDurationLt10000 = 0
 	s.counterDurationGte10000 = 0
 
+	maxConnsPerHost := 0
+	maxConnsPerHostStr := params["maxConnsPerHost"]
+	if maxConnsPerHostStr != "" {
+		maxConnsPerHost, _ = strconv.Atoi(maxConnsPerHostStr)
+	}
+	log.Println("Max conns per host", maxConnsPerHost)
+
+	maxIdleConns := 100
+	maxIdleConnsStr := params["maxIdleConns"]
+	if maxIdleConnsStr != "" {
+		maxIdleConns, _ = strconv.Atoi(maxIdleConnsStr)
+	}
+	log.Println("Max idle conns", maxIdleConns)
+
+	maxIdleConnsPerHost := http.DefaultMaxIdleConnsPerHost
+	maxIdleConnsPerHostStr := params["maxIdleConnsPerHost"]
+	if maxIdleConnsPerHostStr != "" {
+		maxIdleConnsPerHost, _ = strconv.Atoi(maxIdleConnsPerHostStr)
+	}
+	log.Println("Max idle conns per host", maxIdleConnsPerHost)
+
+	noKeepAlive := false
+	if params["keepAlive"] == "false" {
+		noKeepAlive = true
+	}
+	log.Println("Disable keep alive", noKeepAlive)
+
 	dialer := &net.Dialer{
 		Timeout:   30 * time.Second,
 		KeepAlive: 30 * time.Second,
@@ -50,11 +80,13 @@ func (s *HttpGetSession) Setup(params map[string]string) error {
 				return conn, nil
 			},
 			ForceAttemptHTTP2:     true,
-			MaxIdleConns:          100,
+			MaxIdleConns:          maxIdleConns,
+			MaxIdleConnsPerHost:   maxIdleConnsPerHost,
+			MaxConnsPerHost:       maxConnsPerHost,
 			IdleConnTimeout:       90 * time.Second,
 			TLSHandshakeTimeout:   10 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,
-			DisableKeepAlives:     true,
+			DisableKeepAlives:     noKeepAlive,
 		},
 		Timeout: time.Minute,
 	}
@@ -82,7 +114,8 @@ func (s *HttpGetSession) Execute(ctx *UserContext) error {
 		atomic.AddInt64(&s.counterError, 1)
 		return nil
 	}
-	defer resp.Body.Close()
+	io.Copy(ioutil.Discard, resp.Body)
+	resp.Body.Close()
 
 	duration := time.Now().Sub(start)
 	if duration < time.Second {
