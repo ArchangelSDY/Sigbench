@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -139,6 +140,7 @@ func (c *SigbenchMux) HandleIndex(w http.ResponseWriter, req *http.Request) {
 	for addr := range c.regAgentAddrs {
 		agents = append(agents, addr)
 	}
+	sort.Strings(agents)
 
 	c.renderTemplate(w, TplIndex, map[string]interface{}{
 		"agentsCount": len(agents),
