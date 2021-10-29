@@ -2,6 +2,7 @@ package sessions
 
 import (
 	"context"
+	"crypto/tls"
 	"io"
 	"io/ioutil"
 	"log"
@@ -67,18 +68,41 @@ func (s *HttpGetSession) Setup(params map[string]string) error {
 		Timeout:   30 * time.Second,
 		KeepAlive: 30 * time.Second,
 	}
+
+	var dialContext func(ctx context.Context, network, addr string) (net.Conn, error)
+	if params["tls"] != "true" {
+		dialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			conn, err := dialer.DialContext(ctx, network, addr)
+			if err != nil {
+				return nil, err
+			}
+			if err = conn.(*net.TCPConn).SetLinger(0); err != nil {
+				log.Println("Fail to set linger", err)
+			}
+			return conn, nil
+		}
+	} else {
+		insecure := false
+		if params["insecure"] == "true" {
+			insecure = true
+		}
+
+		log.Printf("Use TLS. Insecure: %t\n", insecure)
+
+		tlsConfig := &tls.Config{
+			InsecureSkipVerify: insecure,
+			// Certificates:       []tls.Certificate{loadCertKey("client.crt", "client.key")},
+		}
+		tlsDialer := &tls.Dialer{
+			NetDialer: dialer,
+			Config:    tlsConfig,
+		}
+		dialContext = tlsDialer.DialContext
+	}
+
 	s.client = &http.Client{
 		Transport: &http.Transport{
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				conn, err := dialer.DialContext(ctx, network, addr)
-				if err != nil {
-					return nil, err
-				}
-				if err = conn.(*net.TCPConn).SetLinger(0); err != nil {
-					log.Println("Fail to set linger", err)
-				}
-				return conn, nil
-			},
+			DialContext:           dialContext,
 			ForceAttemptHTTP2:     true,
 			MaxIdleConns:          maxIdleConns,
 			MaxIdleConnsPerHost:   maxIdleConnsPerHost,
