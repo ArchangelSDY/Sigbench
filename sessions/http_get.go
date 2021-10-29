@@ -87,10 +87,18 @@ func (s *HttpGetSession) Setup(params map[string]string) error {
 			insecure = true
 		}
 
-		log.Printf("Use TLS. Insecure: %t\n", insecure)
+		log.Printf("Use TLS. Insecure: %tn", insecure)
+
+		var sessCache tls.ClientSessionCache
+		if params["tlsClientSessionCache"] != "" {
+			capacity, _ := strconv.Atoi(params["tlsClientSessionCache"])
+			sessCache = tls.NewLRUClientSessionCache(capacity)
+			log.Printf("Use TLS client session cache. Capacity: %d\n", capacity)
+		}
 
 		tlsConfig := &tls.Config{
 			InsecureSkipVerify: insecure,
+			ClientSessionCache: sessCache,
 			// Certificates:       []tls.Certificate{loadCertKey("client.crt", "client.key")},
 		}
 		tlsDialer := &tls.Dialer{
