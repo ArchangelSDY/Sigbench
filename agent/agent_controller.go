@@ -3,9 +3,11 @@ package agent
 import (
 	"fmt"
 	"log"
+	"os"
 	"sync"
 	"time"
 
+	"github.com/shirou/gopsutil/v3/process"
 	"github.com/teris-io/shortid"
 
 	"microsoft.com/sigbench/base"
@@ -142,6 +144,8 @@ type AgentListCountersResult struct {
 
 func (c *AgentController) ListCounters(args *AgentListCountersArgs, result *AgentListCountersResult) error {
 	result.Counters = make(map[string]int64)
+
+	// Session counters
 	for _, sessionName := range args.SessionNames {
 		if session, ok := sessions.SessionMap[sessionName]; ok {
 			counters := session.Counters()
@@ -150,5 +154,23 @@ func (c *AgentController) ListCounters(args *AgentListCountersArgs, result *Agen
 			}
 		}
 	}
+
+	// System counters
+	sysCounters := c.getSystemCounters()
+	for k, v := range sysCounters {
+		result.Counters[k] = v
+	}
+
 	return nil
+}
+
+func (c *AgentController) getSystemCounters() map[string]int64 {
+	counters := make(map[string]int64)
+	proc, _ := process.NewProcess(int32(os.Getpid()))
+
+	if cpuPercent, err := proc.CPUPercent(); err == nil {
+		counters["agent:cpuPercent"] = int64(cpuPercent)
+	}
+
+	return counters
 }
