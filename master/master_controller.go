@@ -9,6 +9,7 @@ import (
 
 	"microsoft.com/sigbench/agent"
 	"microsoft.com/sigbench/base"
+	"microsoft.com/sigbench/sessions"
 	"microsoft.com/sigbench/snapshot"
 )
 
@@ -48,11 +49,11 @@ func (c *MasterController) setupAllAgents(job *base.Job) error {
 	return nil
 }
 
-func (c *MasterController) collectCounters(sessionNames []string) map[string]int64 {
+func (c *MasterController) collectCounters(job *base.Job) map[string]int64 {
 	counters := make(map[string]int64)
 	for _, ag := range c.Agents {
 		args := &agent.AgentListCountersArgs{
-			SessionNames: sessionNames,
+			SessionNames: job.SessionNames,
 		}
 		var result agent.AgentListCountersResult
 		if err := ag.Client.Call("AgentController.ListCounters", args, &result); err != nil {
@@ -62,16 +63,24 @@ func (c *MasterController) collectCounters(sessionNames []string) map[string]int
 			counters[k] = counters[k] + v
 		}
 	}
+
+	for _, sessName := range job.SessionNames {
+		sess := sessions.SessionMap[sessName]
+		if agg, ok := sess.(sessions.CounterAggregator); ok {
+			agg.AggregateCounters(job, counters)
+		}
+	}
+
 	return counters
 }
 
-func (c *MasterController) watchCounters(sessionNames []string, stopChan chan struct{}) {
+func (c *MasterController) watchCounters(job *base.Job, stopChan chan struct{}) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
-			counters := c.collectCounters(sessionNames)
+			counters := c.collectCounters(job)
 
 			if err := c.SnapshotWriter.WriteCounters(time.Now(), counters); err != nil {
 				log.Println("Error: fail to write counter snapshot: ", err)
@@ -104,7 +113,8 @@ func (c *MasterController) Run(job *base.Job) error {
 	// TODO: Validate job
 	var wg sync.WaitGroup
 	var agentCount int = len(c.Agents)
-	var timeStart time.Time = time.Now()
+
+	job.StartTime = time.Now()
 
 	if err := c.setupAllAgents(job); err != nil {
 		return err
@@ -129,18 +139,18 @@ func (c *MasterController) Run(job *base.Job) error {
 	}
 
 	stopWatchCounterChan := make(chan struct{})
-	go c.watchCounters(job.SessionNames, stopWatchCounterChan)
+	go c.watchCounters(job, stopWatchCounterChan)
 
 	wg.Wait()
 
 	close(stopWatchCounterChan)
 
 	log.Println("--- Finished ---")
-	counters := c.collectCounters(job.SessionNames)
+	counters := c.collectCounters(job)
 	c.SnapshotWriter.WriteCounters(time.Now(), counters)
 	c.printCounters(counters)
 
-	totalDuration := int64(time.Now().Sub(timeStart) / time.Second)
+	totalDuration := int64(time.Now().Sub(job.StartTime) / time.Second)
 	log.Println("Test duration:", totalDuration, "secs")
 
 	return nil

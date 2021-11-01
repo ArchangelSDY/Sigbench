@@ -3,6 +3,8 @@ package sessions
 import (
 	"log"
 	"sync/atomic"
+
+	"microsoft.com/sigbench/base"
 )
 
 type Session interface {
@@ -12,12 +14,17 @@ type Session interface {
 	Counters() map[string]int64
 }
 
+type CounterAggregator interface {
+	AggregateCounters(*base.Job, map[string]int64)
+}
+
 var SessionMap = map[string]Session{
 	"signalrcore:echo":             &SignalRCoreEcho{},
 	"signalrcore:broadcast:sender": &SignalRCoreBroadcastSender{},
 	"signalrfx:broadcast:sender":   &SignalRFxBroadcastSender{},
 	"redis:pubsub":                 &RedisPubSub{},
 	"http:get":                     &HttpGetSession{},
+	"webpubsub:echo":               &WebPubSubEcho{},
 }
 
 type DummySession struct {

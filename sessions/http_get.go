@@ -13,6 +13,8 @@ import (
 
 	"net/http"
 	"net/url"
+
+	"microsoft.com/sigbench/base"
 )
 
 type HttpGetSession struct {
@@ -129,6 +131,10 @@ func (s *HttpGetSession) Setup(params map[string]string) error {
 			s.client.Transport.(*http.Transport).Proxy = http.ProxyURL(u)
 		}
 	}
+	if params["h2"] == "false" {
+		log.Println("Disable HTTP2")
+		s.client.Transport.(*http.Transport).TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
+	}
 
 	return nil
 }
@@ -172,5 +178,14 @@ func (s *HttpGetSession) Counters() map[string]int64 {
 		"duration:<1000":   atomic.LoadInt64(&s.counterDurationLt1000),
 		"duration:<10000":  atomic.LoadInt64(&s.counterDurationLt10000),
 		"duration:>=10000": atomic.LoadInt64(&s.counterDurationGte10000),
+	}
+}
+
+func (s *HttpGetSession) AggregateCounters(job *base.Job, counters map[string]int64) {
+	completed := counters["completed"]
+	duration := job.Duration()
+	if duration > 0 {
+		durationSecs := int64(duration / time.Second)
+		counters["rps"] = completed / durationSecs
 	}
 }

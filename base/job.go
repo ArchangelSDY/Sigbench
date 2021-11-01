@@ -9,8 +9,13 @@ type JobPhase struct {
 }
 
 type Job struct {
+	StartTime          time.Time
 	Phases             []JobPhase
 	SessionNames       []string
 	SessionPercentages []float64
 	SessionParams      map[string]string
+}
+
+func (j *Job) Duration() time.Duration {
+	return time.Now().Sub(j.StartTime)
 }
