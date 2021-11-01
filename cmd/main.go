@@ -157,8 +157,8 @@ func startAsAgent(address, masterAddr string) {
 	http.Serve(l, nil)
 }
 
-func startAsService(address string, outDir string) {
-	mux := service.NewServiceMux(outDir)
+func startAsService(address string, config *service.ServiceConfig) {
+	mux := service.NewServiceMux(config)
 	go func() {
 		t := time.Tick(5 * time.Second)
 		for _ = range t {
@@ -175,6 +175,10 @@ func main() {
 	var listenAddress = flag.String("l", ":7000", "Listen address")
 	var agents = flag.String("agents", "", "Agent addresses separated by comma")
 	var masterAddr = flag.String("master", "", "Master address for auto registration")
+	var influxServerURL = flag.String("influx-server", "", "InfluxDB server URL")
+	var influxAuthToken = flag.String("influx-auth-token", "", "InfluxDB auth token")
+	var influxOrg = flag.String("influx-org", "", "InfluxDB organization")
+	var influxBucket = flag.String("influx-bucket", "", "InfluxDB bucket")
 
 	flag.Parse()
 
@@ -187,7 +191,14 @@ func main() {
 		startAsMaster(strings.Split(*agents, ","), *config, *outDir)
 	} else if *mode == "service" {
 		log.Println("Start as service")
-		startAsService(*listenAddress, *outDir)
+		config := &service.ServiceConfig{
+			OutDir:          *outDir,
+			InfluxServerURL: *influxServerURL,
+			InfluxAuthToken: *influxAuthToken,
+			InfluxOrg:       *influxOrg,
+			InfluxBucket:    *influxBucket,
+		}
+		startAsService(*listenAddress, config)
 	} else {
 		log.Println("Start as agent: ", *listenAddress)
 		startAsAgent(*listenAddress, *masterAddr)

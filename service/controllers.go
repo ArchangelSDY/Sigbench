@@ -18,18 +18,26 @@ import (
 	"microsoft.com/sigbench/snapshot"
 )
 
-func NewServiceMux(outDir string) *SigbenchMux {
+type ServiceConfig struct {
+	OutDir          string
+	InfluxServerURL string
+	InfluxAuthToken string
+	InfluxOrg       string
+	InfluxBucket    string
+}
+
+func NewServiceMux(config *ServiceConfig) *SigbenchMux {
 	// Create output directory
-	if err := os.MkdirAll(outDir, 0755); err != nil {
+	if err := os.MkdirAll(config.OutDir, 0755); err != nil {
 		log.Fatalln(err)
 	}
 
 	sigMux := &SigbenchMux{
-		outDir:         outDir,
-		snapshotWriter: snapshot.NewMemorySnapshotWriter(),
-		wsUpgrader:     &websocket.Upgrader{},
-		regAgentAddrs:  make(map[string]time.Time),
-		lock:           &sync.RWMutex{},
+		config:            config,
+		memSnapshotWriter: snapshot.NewMemorySnapshotWriter(),
+		wsUpgrader:        &websocket.Upgrader{},
+		regAgentAddrs:     make(map[string]time.Time),
+		lock:              &sync.RWMutex{},
 	}
 
 	mux := http.NewServeMux()
@@ -44,13 +52,13 @@ func NewServiceMux(outDir string) *SigbenchMux {
 }
 
 type SigbenchMux struct {
-	outDir           string
-	mux              *http.ServeMux
-	masterController *master.MasterController
-	snapshotWriter   snapshot.SnapshotWriter
-	wsUpgrader       *websocket.Upgrader
-	regAgentAddrs    map[string]time.Time
-	lock             *sync.RWMutex
+	config            *ServiceConfig
+	mux               *http.ServeMux
+	masterController  *master.MasterController
+	memSnapshotWriter *snapshot.MemorySnapshotWriter
+	wsUpgrader        *websocket.Upgrader
+	regAgentAddrs     map[string]time.Time
+	lock              *sync.RWMutex
 }
 
 func (c *SigbenchMux) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -78,18 +86,24 @@ const TplIndex = `
 			<p>Config</p>
 			<textarea name="config" cols="50" rows="25"></textarea>
 
+			<input type="hidden" name="name" id="job-name" />
+
 			<p>
 				<input type="submit" value="Submit">
 			</p>
 		</form>
 		<div style="width: 100%; margin-left: 1em">
-			<p>Status</p>
+			<p>Job <span id="job-name-display"></span> status</p>
 			<textarea id="status" rows="25" style="width: 100%"></textarea>
 		</div>
 	</div>
 	<script>
-
 		function jobCreate() {
+			var jobName = document.getElementById("job-name");
+			var jobNameDisplay = document.getElementById("job-name-display");
+			jobName.value = '' + Date.now();
+			jobNameDisplay.textContent = jobName.value;
+
 			var form = document.getElementById("job-form");
 			var agents = form.agents.value;
 			var config = form.config.value;
@@ -168,6 +182,12 @@ func (c *SigbenchMux) HandleJobCreate(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
+	job.Name = req.Form.Get("name")
+	if job.Name == "" {
+		http.Error(w, "Empty job name", http.StatusBadRequest)
+		return
+	}
+
 	c.lock.RLock()
 	if c.masterController != nil {
 		c.lock.RUnlock()
@@ -183,10 +203,26 @@ func (c *SigbenchMux) HandleJobCreate(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	c.snapshotWriter = snapshot.NewMemorySnapshotWriter()
+	c.memSnapshotWriter = snapshot.NewMemorySnapshotWriter()
+	snapshotWriters := []snapshot.SnapshotWriter{
+		c.memSnapshotWriter,
+	}
+	if c.config.InfluxServerURL != "" {
+		log.Println("InfluxDB writer enabled")
+		tags := map[string]string{
+			"job": job.Name,
+		}
+		snapshotWriters = append(snapshotWriters, snapshot.NewInfluxDBSnapshotWriter(
+			c.config.InfluxServerURL,
+			c.config.InfluxAuthToken,
+			c.config.InfluxOrg,
+			c.config.InfluxBucket,
+			tags,
+		))
+	}
 	c.masterController = &master.MasterController{
 		// SnapshotWriter: snapshot.NewJsonSnapshotWriter(c.outDir + "/counters.txt"),
-		SnapshotWriter: c.snapshotWriter,
+		SnapshotWriter: snapshot.NewAggregatedSnapshotWriter(snapshotWriters...),
 	}
 
 	c.lock.Unlock()
@@ -229,7 +265,7 @@ func (c *SigbenchMux) HandleJobStatus(w http.ResponseWriter, req *http.Request) 
 		var sw *snapshot.MemorySnapshotWriter
 		c.lock.RLock()
 		lastFlush = c.masterController == nil
-		sw = c.snapshotWriter.(*snapshot.MemorySnapshotWriter)
+		sw = c.memSnapshotWriter
 		c.lock.RUnlock()
 
 		payload, err := sw.Dump()

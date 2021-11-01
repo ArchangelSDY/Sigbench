@@ -9,6 +9,7 @@ type JobPhase struct {
 }
 
 type Job struct {
+	Name               string
 	StartTime          time.Time
 	Phases             []JobPhase
 	SessionNames       []string

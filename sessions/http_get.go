@@ -73,16 +73,17 @@ func (s *HttpGetSession) Setup(params map[string]string) error {
 
 	var dialContext func(ctx context.Context, network, addr string) (net.Conn, error)
 	if params["tls"] != "true" {
-		dialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-			conn, err := dialer.DialContext(ctx, network, addr)
-			if err != nil {
-				return nil, err
-			}
-			if err = conn.(*net.TCPConn).SetLinger(0); err != nil {
-				log.Println("Fail to set linger", err)
-			}
-			return conn, nil
-		}
+		dialContext = dialer.DialContext
+		// dialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		// 	conn, err := dialer.DialContext(ctx, network, addr)
+		// 	if err != nil {
+		// 		return nil, err
+		// 	}
+		// 	if err = conn.(*net.TCPConn).SetLinger(0); err != nil {
+		// 		log.Println("Fail to set linger", err)
+		// 	}
+		// 	return conn, nil
+		// }
 	} else {
 		insecure := false
 		if params["insecure"] == "true" {
