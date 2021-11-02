@@ -140,7 +140,20 @@ func (s *HttpGetSession) Setup(params map[string]string) error {
 	if proxyUrl != "" {
 		if u, err := url.Parse(proxyUrl); err == nil {
 			log.Println("Use proxy", u)
-			s.client.Transport.(*http.Transport).Proxy = http.ProxyURL(u)
+			if params["httpProxy"] == "true" {
+				tr := s.client.Transport.(*http.Transport)
+				if u.Scheme == "https" {
+					tr.DialTLSContext = tr.DialContext
+					tr.DialContext = nil
+				}
+				s.client.Transport = &httpProxyTransport{
+					proxy: u,
+					tr:    tr,
+					user:  params["proxyUser"],
+				}
+			} else {
+				s.client.Transport.(*http.Transport).Proxy = http.ProxyURL(u)
+			}
 		}
 	}
 	if params["h2"] == "false" {
@@ -201,4 +214,18 @@ func (s *HttpGetSession) AggregateCounters(job *base.Job, counters map[string]in
 		durationSecs := int64(duration / time.Second)
 		counters["rps"] = completed / durationSecs
 	}
+}
+
+type httpProxyTransport struct {
+	proxy *url.URL
+	tr    http.RoundTripper
+	user  string
+}
+
+func (t *httpProxyTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	r.Header.Set("X-Proxy-Proto", r.URL.Scheme)
+	r.Header.Set("X-Proxy-User", t.user)
+	r.URL.Scheme = t.proxy.Scheme
+	r.URL.Host = t.proxy.Host
+	return t.tr.RoundTrip(r)
 }
