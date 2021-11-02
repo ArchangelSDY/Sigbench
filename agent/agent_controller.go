@@ -168,8 +168,12 @@ func (c *AgentController) getSystemCounters() map[string]int64 {
 	counters := make(map[string]int64)
 	proc, _ := process.NewProcess(int32(os.Getpid()))
 
-	if cpuPercent, err := proc.CPUPercent(); err == nil {
-		counters["agent:cpuPercent"] = int64(cpuPercent)
+	if cput, err := proc.Times(); err == nil {
+		counters["agent:cpu:total"] = int64(1000 * cput.Total())
+		counters["agent:cpu:user"] = int64(1000 * cput.User)
+		counters["agent:cpu:system"] = int64(1000 * cput.System)
+		counters["agent:cpu:softirq"] = int64(1000 * cput.Softirq)
+		counters["agent:cpu:iowait"] = int64(1000 * cput.Iowait)
 	}
 
 	return counters

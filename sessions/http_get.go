@@ -22,6 +22,7 @@ type HttpGetSession struct {
 	counterInitiated        int64
 	counterCompleted        int64
 	counterError            int64
+	counterDial             int64
 	counterDurationLt1000   int64
 	counterDurationLt10000  int64
 	counterDurationGte10000 int64
@@ -35,6 +36,7 @@ func (s *HttpGetSession) Setup(params map[string]string) error {
 	s.counterInitiated = 0
 	s.counterCompleted = 0
 	s.counterError = 0
+	s.counterDial = 0
 	s.counterDurationLt1000 = 0
 	s.counterDurationLt10000 = 0
 	s.counterDurationGte10000 = 0
@@ -75,6 +77,10 @@ func (s *HttpGetSession) Setup(params map[string]string) error {
 	if params["tls"] != "true" {
 		dialContext = dialer.DialContext
 		// dialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		// 	log.Println("Dial", network, addr)
+		// 	return dialer.DialContext(ctx, network, addr)
+		// }
+		// dialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 		// 	conn, err := dialer.DialContext(ctx, network, addr)
 		// 	if err != nil {
 		// 		return nil, err
@@ -113,7 +119,11 @@ func (s *HttpGetSession) Setup(params map[string]string) error {
 
 	s.client = &http.Client{
 		Transport: &http.Transport{
-			DialContext:           dialContext,
+			// DialContext:           dialContext,
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				atomic.AddInt64(&s.counterDial, 1)
+				return dialContext(ctx, network, addr)
+			},
 			ForceAttemptHTTP2:     true,
 			MaxIdleConns:          maxIdleConns,
 			MaxIdleConnsPerHost:   maxIdleConnsPerHost,
@@ -125,6 +135,7 @@ func (s *HttpGetSession) Setup(params map[string]string) error {
 		},
 		Timeout: time.Minute,
 	}
+
 	proxyUrl := params["proxy"]
 	if proxyUrl != "" {
 		if u, err := url.Parse(proxyUrl); err == nil {
@@ -176,6 +187,7 @@ func (s *HttpGetSession) Counters() map[string]int64 {
 		"initiated":        atomic.LoadInt64(&s.counterInitiated),
 		"completed":        atomic.LoadInt64(&s.counterCompleted),
 		"error":            atomic.LoadInt64(&s.counterError),
+		"dial":             atomic.LoadInt64(&s.counterDial),
 		"duration:<1000":   atomic.LoadInt64(&s.counterDurationLt1000),
 		"duration:<10000":  atomic.LoadInt64(&s.counterDurationLt10000),
 		"duration:>=10000": atomic.LoadInt64(&s.counterDurationGte10000),
