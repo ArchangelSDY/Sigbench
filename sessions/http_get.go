@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/lucas-clemente/quic-go"
 	"microsoft.com/sigbench/base"
 )
 
@@ -73,6 +74,7 @@ func (s *HttpGetSession) Setup(params map[string]string) error {
 		KeepAlive: 30 * time.Second,
 	}
 
+	var tlsConfig *tls.Config
 	var dialContext func(ctx context.Context, network, addr string) (net.Conn, error)
 	if params["tls"] != "true" {
 		dialContext = dialer.DialContext
@@ -105,7 +107,7 @@ func (s *HttpGetSession) Setup(params map[string]string) error {
 			log.Printf("Use TLS client session cache. Capacity: %d\n", capacity)
 		}
 
-		tlsConfig := &tls.Config{
+		tlsConfig = &tls.Config{
 			InsecureSkipVerify: insecure,
 			ClientSessionCache: sessCache,
 			// Certificates:       []tls.Certificate{loadCertKey("client.crt", "client.key")},
@@ -140,6 +142,38 @@ func (s *HttpGetSession) Setup(params map[string]string) error {
 	if proxyUrl != "" {
 		if u, err := url.Parse(proxyUrl); err == nil {
 			log.Println("Use proxy", u)
+
+			if params["quic"] == "true" {
+				tlsConfig.NextProtos = []string{"quic"}
+				quicConfig := &quic.Config{}
+
+				if params["quicMaxStreams"] != "" {
+					quicMaxStreams, _ := strconv.ParseInt(params["quicMaxStreams"], 10, 64)
+					quicConfig.MaxIncomingStreams = quicMaxStreams
+				}
+
+				log.Printf("Use quic: %+v", quicConfig)
+
+				quicMaxSessions := uint64(100)
+				if params["quicMaxSessions"] != "" {
+					quicMaxSessions, _ = strconv.ParseUint(params["quicMaxSessions"], 10, 64)
+				}
+				quicSessPool := &quicSessionPool{n: quicMaxSessions}
+				err = quicSessPool.Dial(u.Host, tlsConfig, quicConfig)
+				if err != nil {
+					return err
+				}
+				s.client.Transport.(*http.Transport).DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+					atomic.AddInt64(&s.counterDial, 1)
+					sess := quicSessPool.Get()
+					stream, err := sess.OpenStreamSync(context.Background())
+					if err != nil {
+						return nil, err
+					}
+					return &quicConn{sess, stream}, nil
+				}
+			}
+
 			if params["httpProxy"] == "true" {
 				tr := s.client.Transport.(*http.Transport)
 				if u.Scheme == "https" {
