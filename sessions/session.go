@@ -25,6 +25,7 @@ var SessionMap = map[string]Session{
 	"redis:pubsub":                 &RedisPubSub{},
 	"http:get":                     &HttpGetSession{},
 	"webpubsub:echo":               &WebPubSubEcho{},
+	"rabbitmq:massive_queue":       &RabbitMQMassiveQueue{},
 }
 
 type DummySession struct {

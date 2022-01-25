@@ -51,7 +51,7 @@ func (c *AgentController) getSessionUsers(phase *base.JobPhase, percentage float
 func executeSession(job *base.Job, phase *base.JobPhase, session sessions.Session, done chan struct{}, wg *sync.WaitGroup) {
 	uid, err := shortid.Generate()
 	if err != nil {
-		log.Println("Error: fail to generate uid due to", err)
+		log.Println("Session execution error: fail to generate uid due to", err)
 		return
 	}
 
@@ -62,7 +62,10 @@ func executeSession(job *base.Job, phase *base.JobPhase, session sessions.Sessio
 	}
 
 	// TODO: Check error
-	session.Execute(ctx)
+	if err = session.Execute(ctx); err != nil {
+		log.Println("Session execution error:", err)
+		time.Sleep(5 * time.Second)
+	}
 
 	<-done
 	wg.Done()
