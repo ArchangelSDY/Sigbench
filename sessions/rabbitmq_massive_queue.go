@@ -1,13 +1,72 @@
 package sessions
 
 import (
+	"fmt"
 	"log"
 	"math/rand"
 	"strconv"
+	"sync"
 	"sync/atomic"
 
 	"github.com/streadway/amqp"
 )
+
+type RabbitMQChannelPool struct {
+	url   string
+	conns []*amqp.Connection
+	lock  sync.Mutex
+}
+
+func NewRabbitMQChannelPool(url string) *RabbitMQChannelPool {
+	return &RabbitMQChannelPool{
+		url:   url,
+		conns: []*amqp.Connection{},
+	}
+}
+
+func (p *RabbitMQChannelPool) Channel() (*amqp.Channel, error) {
+	for _, conn := range p.conns {
+		ch, err := conn.Channel()
+		if err == nil {
+			return ch, nil
+		}
+	}
+
+	p.lock.Lock()
+	for _, conn := range p.conns {
+		ch, err := conn.Channel()
+		if err == nil {
+			p.lock.Unlock()
+			return ch, nil
+		}
+	}
+
+	conn, err := amqp.Dial(p.url)
+	if err != nil {
+		p.lock.Unlock()
+		return nil, err
+	}
+	ch, err := conn.Channel()
+	if err != nil {
+		conn.Close()
+		p.lock.Unlock()
+		return nil, err
+	}
+
+	p.conns = append(p.conns, conn)
+	p.lock.Unlock()
+
+	return ch, nil
+}
+
+func (p *RabbitMQChannelPool) Close() {
+	p.lock.Lock()
+	for _, conn := range p.conns {
+		conn.Close()
+	}
+	p.conns = []*amqp.Connection{}
+	p.lock.Unlock()
+}
 
 type RabbitMQMassiveQueue struct {
 	cntInProgress int64
@@ -16,8 +75,9 @@ type RabbitMQMassiveQueue struct {
 	cntPublished  int64
 	cntReceived   int64
 
-	conn            *amqp.Connection
+	connPool        *RabbitMQChannelPool
 	payload         []byte
+	queues          int
 	queueMessages   int
 	queueType       string
 	msgDeliveryMode uint8
@@ -34,15 +94,13 @@ func (s *RabbitMQMassiveQueue) Setup(params map[string]string) error {
 	s.cntPublished = 0
 	s.cntReceived = 0
 
-	if s.conn != nil {
-		s.conn.Close()
+	if s.connPool == nil {
+		s.connPool = NewRabbitMQChannelPool(params["url"])
+	} else {
+		s.connPool.Close()
 	}
 
-	conn, err := amqp.Dial(params["url"])
-	if err != nil {
-		return err
-	}
-	s.conn = conn
+	var err error
 
 	payloadSize := 100
 	if payloadSizeStr := params["messageSize"]; payloadSizeStr != "" {
@@ -53,6 +111,14 @@ func (s *RabbitMQMassiveQueue) Setup(params map[string]string) error {
 	log.Println("Payload size", payloadSize)
 	s.payload = make([]byte, payloadSize)
 	rand.Read(s.payload)
+
+	s.queues = 1
+	if queuesStr := params["queues"]; queuesStr != "" {
+		if s.queues, err = strconv.Atoi(queuesStr); err != nil {
+			return err
+		}
+	}
+	log.Println("Queues per user", s.queues)
 
 	s.queueMessages = 1
 	if queueMsgsStr := params["queueMessages"]; queueMsgsStr != "" {
@@ -87,46 +153,66 @@ func (s *RabbitMQMassiveQueue) logError(msg string, err error) {
 }
 
 func (s *RabbitMQMassiveQueue) Execute(ctx *UserContext) error {
+	for i := 0; i < s.queues; i++ {
+		err := s.doQueue(ctx, i)
+		if err != nil {
+			s.logError(fmt.Sprintf("Fail to test queue %d", i), err)
+			return err
+		} else {
+			atomic.AddInt64(&s.cntSuccess, 1)
+		}
+	}
+
+	return nil
+}
+
+func (s *RabbitMQMassiveQueue) doQueue(ctx *UserContext, idx int) error {
 	atomic.AddInt64(&s.cntInProgress, 1)
 	defer atomic.AddInt64(&s.cntInProgress, -1)
 
-	ch, err := s.conn.Channel()
+	pubCh, err := s.connPool.Channel()
 	if err != nil {
 		s.logError("Fail to open a channel", err)
 		return err
 	}
-	defer ch.Close()
+	defer pubCh.Close()
 
-	chArgs := amqp.Table{}
+	qArgs := amqp.Table{}
 	if s.queueType != "" {
-		chArgs["x-queue-type"] = s.queueType
+		qArgs["x-queue-type"] = s.queueType
 	}
 
-	q, err := ch.QueueDeclare(
-		"q-"+ctx.UserId,
+	q, err := pubCh.QueueDeclare(
+		fmt.Sprintf("q-%s-%d", ctx.UserId, idx),
 		true,  // durable
-		true,  // delete when unused
+		false, // delete when unused
 		false, // exclusive
 		false, // no-wait
-		chArgs,
+		qArgs,
 	)
 	if err != nil {
-		s.logError("Fail to declare a queue", err)
-		return err
+		return fmt.Errorf("Fail to declare a queue: %s", err)
 	}
+	defer func() {
+		ch, err := s.connPool.Channel()
+		if err == nil {
+			ch.QueueDelete(q.Name, false, false, false)
+		} else {
+			s.logError("Fail to delete queue: "+q.Name, err)
+		}
+	}()
 
-	exitCh := make(chan struct{})
-	go func() {
-		ch, err := s.conn.Channel()
+	var msgs <-chan amqp.Delivery
+	if s.queueMessages > 0 {
+		subCh, err := s.connPool.Channel()
 		if err != nil {
 			s.logError("Fail to open a channel", err)
-			exitCh <- struct{}{}
-			return
+			return err
 		}
-		defer ch.Close()
+		defer subCh.Close()
 
-		cid := "c-" + ctx.UserId
-		msgs, err := ch.Consume(
+		cid := fmt.Sprintf("c-%s-%d", ctx.UserId, idx)
+		msgs, err = subCh.Consume(
 			q.Name,
 			cid,   // consumer
 			false, // auto-acknowledgments
@@ -137,34 +223,34 @@ func (s *RabbitMQMassiveQueue) Execute(ctx *UserContext) error {
 		)
 		if err != nil {
 			s.logError("Fail to subscribe", err)
-			exitCh <- struct{}{}
-			return
+			return err
 		}
+	}
 
+	exitChan := make(chan error)
+	go func() {
+		// Sub
 		for i := 0; i < s.queueMessages; i++ {
 			msg, ok := <-msgs
 			if !ok {
-				s.logError("Queue closed too early", err)
-				exitCh <- struct{}{}
+				exitChan <- fmt.Errorf("Queue closed too early", err)
 				return
 			}
 
-			// TODO: Delay
-			// time.Sleep(100 * time.Millisecond)
-
 			// TODO: Batch ack?
 			if err = msg.Ack(false); err != nil {
-				s.logError("Fail to ack", err)
+				exitChan <- fmt.Errorf("Fail to ack", err)
+				return
 			}
-
 			atomic.AddInt64(&s.cntReceived, 1)
 		}
 
-		exitCh <- struct{}{}
+		exitChan <- nil
 	}()
 
 	for i := 0; i < s.queueMessages; i++ {
-		err := ch.Publish(
+		// Pub
+		err := pubCh.Publish(
 			"",     // exchange
 			q.Name, // routing key
 			false,  // mandatory
@@ -177,14 +263,12 @@ func (s *RabbitMQMassiveQueue) Execute(ctx *UserContext) error {
 		)
 		if err != nil {
 			s.logError("Fail to publish", err)
+			return err
 		}
 		atomic.AddInt64(&s.cntPublished, 1)
 	}
 
-	<-exitCh
-	atomic.AddInt64(&s.cntSuccess, 1)
-
-	return nil
+	return <-exitChan
 }
 
 func (s *RabbitMQMassiveQueue) Counters() map[string]int64 {
