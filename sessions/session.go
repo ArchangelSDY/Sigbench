@@ -26,6 +26,7 @@ var SessionMap = map[string]Session{
 	"http:get":                     &HttpGetSession{},
 	"webpubsub:echo":               &WebPubSubEcho{},
 	"rabbitmq:massive_queue":       &RabbitMQMassiveQueue{},
+	"kafka:producer":               &KafkaProducer{},
 }
 
 type DummySession struct {
