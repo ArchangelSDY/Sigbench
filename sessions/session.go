@@ -27,6 +27,7 @@ var SessionMap = map[string]Session{
 	"webpubsub:echo":               &WebPubSubEcho{},
 	"rabbitmq:massive_queue":       &RabbitMQMassiveQueue{},
 	"kafka:producer":               &KafkaProducer{},
+	"pulsar:massive_queue":         &PulsarMassiveQueue{},
 }
 
 type DummySession struct {
