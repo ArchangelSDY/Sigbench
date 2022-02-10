@@ -106,6 +106,18 @@ func (s *PulsarMassiveQueue) Execute(ctx *UserContext) error {
 	return nil
 }
 
+func sendMessageWithTimeout(producer pulsar.Producer, msg *pulsar.ProducerMessage) (pulsar.MessageID, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	return producer.Send(ctx, msg)
+}
+
+func receiveMessageWithTimeout(consumer pulsar.Consumer) (pulsar.Message, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	return consumer.Receive(ctx)
+}
+
 func (s *PulsarMassiveQueue) doQueue(ctx *UserContext, idx int) error {
 	atomic.AddInt64(&s.cntInProgress, 1)
 	defer atomic.AddInt64(&s.cntInProgress, -1)
@@ -140,7 +152,7 @@ func (s *PulsarMassiveQueue) doQueue(ctx *UserContext, idx int) error {
 				return
 			}
 
-			msg, err := consumer.Receive(context.Background())
+			msg, err := receiveMessageWithTimeout(consumer)
 			if err != nil {
 				exitChan <- fmt.Errorf("Fail to consume", err)
 				continue
@@ -156,7 +168,7 @@ func (s *PulsarMassiveQueue) doQueue(ctx *UserContext, idx int) error {
 
 	for i := 0; i < s.queueMessages; i++ {
 		// Pub
-		_, err := producer.Send(context.Background(), &pulsar.ProducerMessage{
+		_, err := sendMessageWithTimeout(producer, &pulsar.ProducerMessage{
 			Payload: s.payload,
 		})
 		if err != nil {
