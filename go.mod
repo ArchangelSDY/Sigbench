@@ -3,11 +3,14 @@ module microsoft.com/sigbench
 go 1.17
 
 require (
+	github.com/apache/pulsar-client-go v0.7.0
 	github.com/garyburd/redigo v1.6.2
 	github.com/gorilla/websocket v1.4.2
 	github.com/influxdata/influxdb-client-go/v2 v2.5.1
 	github.com/lucas-clemente/quic-go v0.24.0
+	github.com/segmentio/kafka-go v0.4.27
 	github.com/shirou/gopsutil/v3 v3.21.10
+	github.com/streadway/amqp v1.0.0
 	github.com/teris-io/shortid v0.0.0-20201117134242-e59966efd125
 	go.uber.org/automaxprocs v1.4.0
 )
@@ -17,7 +20,6 @@ require (
 	github.com/AthenZ/athenz v1.10.45 // indirect
 	github.com/DataDog/zstd v1.5.0 // indirect
 	github.com/StackExchange/wmi v1.2.1 // indirect
-	github.com/apache/pulsar-client-go v0.7.0 // indirect
 	github.com/apache/pulsar-client-go/oauth2 v0.0.0-20220122031548-edf81af225d1 // indirect
 	github.com/ardielle/ardielle-go v1.5.2 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -26,7 +28,6 @@ require (
 	github.com/danieljoos/wincred v1.1.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/deepmap/oapi-codegen v1.8.2 // indirect
-	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect
 	github.com/dvsekhvalnov/jose2go v1.5.0 // indirect
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
@@ -40,7 +41,6 @@ require (
 	github.com/influxdata/line-protocol v0.0.0-20200327222509-2487e7298839 // indirect
 	github.com/keybase/go-keychain v0.0.0-20211119201326-e02f34051621 // indirect
 	github.com/klauspost/compress v1.14.2 // indirect
-	github.com/konsorten/go-windows-terminal-sequences v1.0.3 // indirect
 	github.com/linkedin/goavro/v2 v2.11.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/marten-seemann/qtls-go1-16 v0.1.4 // indirect
@@ -57,10 +57,8 @@ require (
 	github.com/prometheus/client_model v0.2.0 // indirect
 	github.com/prometheus/common v0.32.1 // indirect
 	github.com/prometheus/procfs v0.7.3 // indirect
-	github.com/segmentio/kafka-go v0.4.27 // indirect
 	github.com/sirupsen/logrus v1.8.1 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
-	github.com/streadway/amqp v1.0.0 // indirect
 	github.com/stretchr/testify v1.7.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.9 // indirect
 	github.com/tklauser/numcpus v0.3.0 // indirect
