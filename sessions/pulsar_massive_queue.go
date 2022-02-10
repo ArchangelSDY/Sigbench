@@ -44,9 +44,10 @@ func (s *PulsarMassiveQueue) Setup(params map[string]string) error {
 		s.client.Close()
 	}
 	s.client, err = pulsar.NewClient(pulsar.ClientOptions{
-		URL:               params["url"],
-		OperationTimeout:  30 * time.Second,
-		ConnectionTimeout: 30 * time.Second,
+		URL:                     params["url"],
+		OperationTimeout:        30 * time.Second,
+		ConnectionTimeout:       30 * time.Second,
+		MaxConnectionsPerBroker: 10,
 	})
 	if err != nil {
 		return err
@@ -139,7 +140,12 @@ func (s *PulsarMassiveQueue) doQueue(ctx *UserContext, idx int) error {
 	if err != nil {
 		return err
 	}
-	defer consumer.Close()
+	defer func() {
+		if err := consumer.Unsubscribe(); err != nil {
+			s.logError("Fail to unsubscribe", err)
+		}
+		consumer.Close()
+	}()
 
 	exitChan := make(chan error)
 	go func() {
