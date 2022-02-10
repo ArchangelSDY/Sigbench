@@ -4,7 +4,7 @@ go 1.17
 
 require (
 	github.com/apache/pulsar-client-go v0.7.0
-	github.com/garyburd/redigo v1.6.2
+	github.com/gomodule/redigo v1.8.8
 	github.com/gorilla/websocket v1.4.2
 	github.com/influxdata/influxdb-client-go/v2 v2.5.1
 	github.com/lucas-clemente/quic-go v0.24.0
