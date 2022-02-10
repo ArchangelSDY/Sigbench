@@ -1,0 +1,90 @@
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: telegraf
+  namespace: bench
+data:
+    telegraf.conf: |
+        [agent]
+            debug = true
+            interval = "5s"
+
+        [global_tags]
+            node = "$NODE_NAME"
+
+        [[inputs.kubernetes]]
+            url = "https://$HOST_IP:10250"
+            tls_ca = "/etc/kubernetes/certs/ca.crt"
+            tls_cert = "/etc/kubernetes/certs/client.crt"
+            tls_key = "/etc/kubernetes/certs/client.key"
+            insecure_skip_verify = true
+            label_include = ['app', 'k8s-app']
+
+        [[outputs.influxdb_v2]]
+            urls = ["http://influxdb.influxdb.svc.cluster.local:8086"]
+            token = "$INFLUX_AUTH_TOKEN"
+            organization = "influx"
+            bucket = "influx"
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: telegraf
+  namespace: bench
+spec:
+  selector:
+    matchLabels:
+      app: telegraf
+  template:
+    metadata:
+      labels:
+        app: telegraf
+      annotations:
+        config: "20201202"
+    spec:
+      priorityClassName: system-node-critical
+      volumes:
+      - name: certs
+        hostPath:
+          path: /etc/kubernetes/certs
+          type: Directory
+      - name: conf
+        configMap:
+          name: telegraf
+      containers:
+      - image: telegraf:1.19
+        name: telegraf
+        resources:
+          limits:
+            cpu: 1
+            memory: 500Mi
+          requests:
+            cpu: 100m
+            memory: 100Mi
+        command:
+        - /usr/bin/telegraf
+        volumeMounts:
+        - name: certs
+          mountPath: /etc/kubernetes/certs
+        - name: conf
+          mountPath: /etc/telegraf
+          readOnly: true
+        env:
+        - name: HOST_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: "status.hostIP"
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: "spec.nodeName"
+        - name: INFLUX_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: sigbench
+              key: influx-auth-token
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 25%

@@ -132,11 +132,18 @@ func (s *PulsarMassiveQueue) doQueue(ctx *UserContext, idx int) error {
 	exitChan := make(chan error)
 	go func() {
 		// Sub
+		timeStart := time.Now()
+
 		for i := 0; i < s.queueMessages; i++ {
+			if time.Now().Sub(timeStart) > time.Second*time.Duration(s.queueMessages) {
+				exitChan <- fmt.Errorf("Subscriber timeout")
+				return
+			}
+
 			msg, err := consumer.Receive(context.Background())
 			if err != nil {
 				exitChan <- fmt.Errorf("Fail to consume", err)
-				return
+				continue
 			}
 
 			consumer.Ack(msg)
@@ -154,7 +161,7 @@ func (s *PulsarMassiveQueue) doQueue(ctx *UserContext, idx int) error {
 		})
 		if err != nil {
 			s.logError("Fail to publish", err)
-			return err
+			continue
 		}
 		atomic.AddInt64(&s.cntPublished, 1)
 	}
