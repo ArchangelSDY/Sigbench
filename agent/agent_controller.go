@@ -121,6 +121,7 @@ func (c *AgentController) Run(args *AgentRunArgs, result *AgentRunResult) error 
 }
 
 type AgentSetupArgs struct {
+	SessionNames  []string
 	SessionParams map[string]string
 }
 
@@ -128,7 +129,17 @@ type AgentSetupResult struct {
 }
 
 func (c *AgentController) Setup(args *AgentSetupArgs, result *AgentSetupResult) error {
-	for _, session := range sessions.SessionMap {
+	sessionNames := make(map[string]interface{})
+	for _, name := range args.SessionNames {
+		sessionNames[name] = struct{}{}
+	}
+
+	for name, session := range sessions.SessionMap {
+		// Skip sessions that will not be executed
+		if _, ok := sessionNames[name]; !ok {
+			continue
+		}
+
 		if err := session.Setup(args.SessionParams); err != nil {
 			return err
 		}

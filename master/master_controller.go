@@ -34,6 +34,7 @@ func (c *MasterController) setupAllAgents(job *base.Job) error {
 		wg.Add(1)
 		go func(ag *agent.AgentDelegate) {
 			args := &agent.AgentSetupArgs{
+				SessionNames:  job.SessionNames,
 				SessionParams: job.SessionParams,
 			}
 			var result agent.AgentSetupResult
@@ -131,7 +132,7 @@ func (c *MasterController) Run(job *base.Job) error {
 			var result agent.AgentRunResult
 			if err := ag.Client.Call("AgentController.Run", args, &result); err != nil {
 				// TODO: report error
-				log.Println(err)
+				log.Println("AgentController.Run error:", err)
 			}
 
 			wg.Done()
