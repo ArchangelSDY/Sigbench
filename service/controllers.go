@@ -44,6 +44,7 @@ func NewServiceMux(config *ServiceConfig) *SigbenchMux {
 	mux.HandleFunc("/job/create", sigMux.HandleJobCreate)
 	mux.HandleFunc("/job/status", sigMux.HandleJobStatus)
 	mux.HandleFunc("/agent/register", sigMux.HandleAgentRegister)
+	mux.HandleFunc("/master/exit", sigMux.HandleMasterExit)
 	mux.HandleFunc("/", sigMux.HandleIndex)
 
 	sigMux.mux = mux
@@ -90,6 +91,7 @@ const TplIndex = `
 
 			<p>
 				<input type="submit" value="Submit">
+				<input type="button" value="Restart" id="btn-restart" onClick="javascript: restart()">
 			</p>
 		</form>
 		<div style="width: 100%; margin-left: 1em">
@@ -140,6 +142,17 @@ const TplIndex = `
 			});
 
 			return false;
+		}
+
+		function restart() {
+			fetch("/master/exit", {
+				method: "POST"
+			}).then(function() {
+				document.getElementById('btn-restart').value = 'Restarting...';
+				setTimeout(function() {
+					location.reload();
+				}, 5000);
+			});
 		}
 	</script>
 </body>
@@ -315,4 +328,20 @@ func (c *SigbenchMux) CheckExpiredAgents() {
 		}
 	}
 	c.lock.Unlock()
+}
+
+func (c *SigbenchMux) HandleMasterExit(w http.ResponseWriter, req *http.Request) {
+	if req.Method != "POST" {
+		http.Error(w, "Expect POST", http.StatusBadRequest)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+
+	log.Println("Exiting in 1 sec")
+
+	go func() {
+		time.Sleep(time.Second)
+		os.Exit(0)
+	}()
 }
