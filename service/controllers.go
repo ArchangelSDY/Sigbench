@@ -182,6 +182,11 @@ func (c *SigbenchMux) HandleJobCreate(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
+	if err := job.Validate(); err != nil {
+		http.Error(w, "Fail to decode config: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	job.Name = req.Form.Get("name")
 	if job.Name == "" {
 		http.Error(w, "Empty job name", http.StatusBadRequest)

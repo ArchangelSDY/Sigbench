@@ -85,7 +85,7 @@ func (c *AgentController) runPhase(job *base.Job, phase *base.JobPhase, agentCou
 			log.Fatalln("Session not found: " + sessionName)
 		}
 
-		after := time.After(phase.Duration)
+		after := time.After(phase.GetDuration())
 		sessUserChan := make(chan struct{}, sessionUsers)
 		go func(session sessions.Session, swg *sync.WaitGroup) {
 			var wg sync.WaitGroup

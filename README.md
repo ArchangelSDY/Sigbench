@@ -43,7 +43,7 @@ Here is a skeleton of config file:
         {
             "Name":"foobar",                    // Phase name. Each agent executes all phases sequentially.
             "UsersPerSecond":20,                // Number of users launched per second.
-            "Duration":10000000000              // Duration of the phase in nanosecond.
+            "Duration":"1m"                     // Duration of the phase.
         }
     ],
     "SessionNames":[                            // Session names used by each user. Session name is defined in `sessions/session.go`. Each user executes only one session. Different user can execute different session and the percentage is controlled by the following `SessionPercentages`.
@@ -68,7 +68,7 @@ Here is an example for SignalR .Net Core Broadcast:
         {
             "Name":"broadcast",
             "UsersPerSecond":20,
-            "Duration":10000000000
+            "Duration":"10s"
         }
     ],
     "SessionNames":[
