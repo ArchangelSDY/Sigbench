@@ -89,6 +89,74 @@ It will:
 1. Create users in the first 10 seconds at a rate of 20users/sec.
 2. For each user, it will broadcast for 60 seconds.
 
+### Session params
+
+#### HTTP
+
+* url
+* maxConnsPerHost
+* maxIdleConns
+* maxIdleConnsPerHost
+* keepAlive: true/false. Default is true
+* tls: true/false. Default is false
+* insecure: true/false. Default is false
+* tlsClientSessionCache: Cache size
+* proxy: proxy url
+* quic: true/false. Default is false
+* quicMaxStreams
+* quicMaxConnections
+* httpProxy: true/false
+* proxyUser
+* h2: true/false. Default is true
+
+#### Kafka
+
+* url
+* topic
+* messageSize
+* messageCount
+* partition: Number of partitions
+
+#### Pulsar massive queue
+
+* url
+* messageSize
+* queues
+* queueMessages
+
+#### RabbitMQ massive queue
+
+* url
+* messageSize
+* queues
+* queueMessages
+* queueType
+* deliveryMode
+
+#### Redis Pub Sub
+
+* host
+* password
+* broadcastDurationSecs
+* publishInterval
+
+#### SignalR .NET Core Broadcast
+
+* host
+* broadcastDurationSecs
+
+#### SignalR .NET Core Echo
+
+* host
+
+#### SignalR .NET Framework Broadcast
+
+* host
+* broadcastDurationSecs
+
+#### Web PubSub Echo
+
+* url
 
 ## Develop
 
