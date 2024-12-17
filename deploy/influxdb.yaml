@@ -23,11 +23,7 @@ spec:
                 app: influxdb
         spec:
             nodeSelector:
-                kubernetes.io/role: master
-            tolerations:
-              - key: node-role.kubernetes.io/master
-                operator: Exists
-                effect: NoSchedule
+                signalr.net/pool-type: system
             containers:
               - image: influxdb:2.0.6
                 name: influxdb
@@ -39,14 +35,14 @@ spec:
                     name: data
     volumeClaimTemplates:
       - metadata:
-            name: data
-            namespace: influxdb
+          name: data
         spec:
-            accessModes:
-              - ReadWriteOnce
-            resources:
-                requests:
-                    storage: 10G
+          accessModes: ["ReadWriteOnce"]
+          storageClassName: "local-storage"
+          resources:
+            requests:
+              storage: 10Gi
+
 ---
 apiVersion: v1
 kind: Service
@@ -61,3 +57,27 @@ spec:
     selector:
         app: influxdb
     type: ClusterIP
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  namespace: influxdb
+  name: data
+spec:
+  capacity:
+    storage: 10Gi
+  volumeMode: Filesystem
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: local-storage
+  persistentVolumeReclaimPolicy: Delete
+  local:
+    path: /var/run/local-pv
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - k8s-system-000000-vmss000000

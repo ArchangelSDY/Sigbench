@@ -4,18 +4,6 @@ kind: Namespace
 metadata:
   name: grafana
 ---
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: grafana-pvc
-  namespace: grafana
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -33,15 +21,7 @@ spec:
         app: grafana
     spec:
       nodeSelector:
-        kubernetes.io/role: master
-      tolerations:
-        - key: node-role.kubernetes.io/master
-          operator: Exists
-          effect: NoSchedule
-      securityContext:
-        fsGroup: 472
-        supplementalGroups:
-          - 0
+        signalr.net/pool-type: system
       containers:
         - name: grafana
           image: grafana/grafana:7.5.2
@@ -74,11 +54,12 @@ spec:
               memory: 750Mi
           volumeMounts:
             - mountPath: /var/lib/grafana
-              name: grafana-pv
+              name: grafana-host-vol
       volumes:
-        - name: grafana-pv
-          persistentVolumeClaim:
-            claimName: grafana-pvc
+        - name: grafana-host-vol
+          hostPath:
+            path: /var/run/grafana
+            type: DirectoryOrCreate
 ---
 apiVersion: v1
 kind: Service

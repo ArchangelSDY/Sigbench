@@ -15,9 +15,9 @@ data:
 
         [[inputs.kubernetes]]
             url = "https://$HOST_IP:10250"
-            tls_ca = "/etc/kubernetes/certs/ca.crt"
-            tls_cert = "/etc/kubernetes/certs/client.crt"
-            tls_key = "/etc/kubernetes/certs/client.key"
+            tls_ca = "/etc/kubernetes/pki/ca.crt"
+            tls_cert = "/var/lib/kubelet/pki/kubelet-client-current.pem"
+            tls_key = "/var/lib/kubelet/pki/kubelet-client-current.pem"
             insecure_skip_verify = true
             label_include = ['app', 'k8s-app']
 
@@ -45,9 +45,13 @@ spec:
     spec:
       priorityClassName: system-node-critical
       volumes:
-      - name: certs
+      - name: kubelet-pki
         hostPath:
-          path: /etc/kubernetes/certs
+          path: /var/lib/kubelet/pki
+          type: Directory
+      - name: pki
+        hostPath:
+          path: /etc/kubernetes/pki
           type: Directory
       - name: conf
         configMap:
@@ -65,8 +69,10 @@ spec:
         command:
         - /usr/bin/telegraf
         volumeMounts:
-        - name: certs
-          mountPath: /etc/kubernetes/certs
+        - name: pki
+          mountPath: /etc/kubernetes/pki
+        - name: kubelet-pki
+          mountPath: /var/lib/kubelet/pki
         - name: conf
           mountPath: /etc/telegraf
           readOnly: true
