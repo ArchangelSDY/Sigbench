@@ -14,7 +14,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/lucas-clemente/quic-go"
+	"github.com/quic-go/quic-go"
 	"microsoft.com/sigbench/base"
 )
 
@@ -154,18 +154,18 @@ func (s *HttpGetSession) Setup(params map[string]string) error {
 
 				log.Printf("Use quic: %+v", quicConfig)
 
-				quicMaxSessions := uint64(100)
-				if params["quicMaxSessions"] != "" {
-					quicMaxSessions, _ = strconv.ParseUint(params["quicMaxSessions"], 10, 64)
+				quicMaxConns := uint64(100)
+				if params["quicMaxConnections"] != "" {
+					quicMaxConns, _ = strconv.ParseUint(params["quicMaxConnections"], 10, 64)
 				}
-				quicSessPool := &quicSessionPool{n: quicMaxSessions}
-				err = quicSessPool.Dial(u.Host, tlsConfig, quicConfig)
+				quicConnPool := &quicConnPool{n: quicMaxConns}
+				err = quicConnPool.Dial(u.Host, tlsConfig, quicConfig)
 				if err != nil {
 					return err
 				}
 				s.client.Transport.(*http.Transport).DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 					atomic.AddInt64(&s.counterDial, 1)
-					sess := quicSessPool.Get()
+					sess := quicConnPool.Get()
 					stream, err := sess.OpenStreamSync(context.Background())
 					if err != nil {
 						return nil, err

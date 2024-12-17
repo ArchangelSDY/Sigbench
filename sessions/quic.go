@@ -1,16 +1,17 @@
 package sessions
 
 import (
+	"context"
 	"crypto/tls"
 	"net"
 	"sync/atomic"
 	"time"
 
-	"github.com/lucas-clemente/quic-go"
+	"github.com/quic-go/quic-go"
 )
 
 type quicConn struct {
-	sess   quic.Session
+	conn   quic.Connection
 	stream quic.Stream
 }
 
@@ -24,10 +25,10 @@ func (c *quicConn) Close() error {
 	return c.stream.Close()
 }
 func (c *quicConn) LocalAddr() net.Addr {
-	return c.sess.LocalAddr()
+	return c.conn.LocalAddr()
 }
 func (c *quicConn) RemoteAddr() net.Addr {
-	return c.sess.RemoteAddr()
+	return c.conn.RemoteAddr()
 }
 func (c *quicConn) SetDeadline(t time.Time) error {
 	return c.stream.SetDeadline(t)
@@ -39,25 +40,25 @@ func (c *quicConn) SetWriteDeadline(t time.Time) error {
 	return c.stream.SetWriteDeadline(t)
 }
 
-type quicSessionPool struct {
-	n      uint64
-	sesses []quic.Session
-	cnt    uint64
+type quicConnPool struct {
+	n     uint64
+	conns []quic.Connection
+	cnt   uint64
 }
 
-func (p *quicSessionPool) Dial(addr string, tlsConfig *tls.Config, quicConfig *quic.Config) error {
-	p.sesses = make([]quic.Session, p.n)
+func (p *quicConnPool) Dial(addr string, tlsConfig *tls.Config, quicConfig *quic.Config) error {
+	p.conns = make([]quic.Connection, p.n)
 	for i := uint64(0); i < p.n; i++ {
-		quicSess, err := quic.DialAddr(addr, tlsConfig, quicConfig)
+		conn, err := quic.DialAddr(context.Background(), addr, tlsConfig, quicConfig)
 		if err != nil {
 			return err
 		}
-		p.sesses[i] = quicSess
+		p.conns[i] = conn
 	}
 	return nil
 }
 
-func (p *quicSessionPool) Get() quic.Session {
+func (p *quicConnPool) Get() quic.Connection {
 	idx := atomic.AddUint64(&p.cnt, 1)
-	return p.sesses[idx%p.n]
+	return p.conns[idx%p.n]
 }
